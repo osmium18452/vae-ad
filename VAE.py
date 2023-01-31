@@ -43,7 +43,7 @@ class VAE(nn.Module):
             # nn.ReLU(),
             nn.Tanh(),
             nn.Linear(neuron_list[0], input_size),
-            nn.Tanh(),
+            # nn.Tanh(),
             # nn.Sigmoid(),
         )
 

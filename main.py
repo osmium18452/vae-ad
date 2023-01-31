@@ -33,6 +33,7 @@ parser.add_argument('--model', default='vae', type=str)
 parser.add_argument('--kl_weight', default=1., type=float)
 parser.add_argument('--draw_length', default=100, type=int)
 parser.add_argument('--draw_dim', default=0, type=int)
+parser.add_argument('--draw_diff',action='store_true')
 args = parser.parse_args()
 
 num_train_samples = args.num_train_samples
@@ -55,6 +56,8 @@ normalize_data = args.normalize_data
 which_model = args.model
 kl_weight = args.kl_weight
 draw_length = args.draw_length
+draw_dim = args.draw_dim
+draw_diff=args.draw_diff
 
 train_file = 'machine-2-1.train.pkl'
 test_file = 'machine-2-1.test.pkl'
@@ -170,10 +173,10 @@ recon_list = recon_list[1:]
 print(recon_list.shape)
 length = draw_length
 if which_model == 'lstmvae':
-    y1 = test_set[:length, -1, 0]
+    y1 = test_set[:length, -1, draw_dim]
 else:
-    y1 = test_set[:length, 0]
-y2 = recon_list[:length, 0]
+    y1 = test_set[:length, draw_dim]
+y2 = recon_list[:length, draw_dim]
 x = np.arange(y1.shape[0])
 diff = np.abs(y1 - y2)
 if which_model == 'lstmvae':
@@ -185,7 +188,8 @@ plt.figure(dpi=300, figsize=(10, 5))
 ap = .9
 plt.plot(x, y1, label='ground truth', alpha=ap)
 plt.plot(x, y2, label='predicted', alpha=ap)
-plt.plot(x, diff, label='diff', alpha=ap)
+if draw_diff:
+    plt.plot(x, diff, label='diff', alpha=ap)
 # plt.plot(x, mse, label='mse', alpha=ap)
 plt.legend()
 plt.savefig('plot.png', format='png')
