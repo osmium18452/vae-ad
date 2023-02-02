@@ -1,6 +1,7 @@
 import pickle
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 class DataLoader:
@@ -50,7 +51,10 @@ class DataLoader:
         return self.vae_test_set
 
     def load_ground_truth(self):
-        pass
+        return self.label_data
+
+    def load_anomaly_position(self):
+        return np.nonzero(self.label_data)[0]
 
 
 if __name__ == '__main__':
@@ -60,14 +64,17 @@ if __name__ == '__main__':
     # f.close()
     # train_file = 'machine-2-1.train.pkl'
     # test_file = 'machine-2-1.test.pkl'
-    train_file = 'sector1.pkl'
-    test_file = 'sector1.pkl'
+    train_file = 'machine-2-1.train.pkl'
+    test_file = 'machine-2-1.test.pkl'
     label_file = 'machine-2-1.label.pkl'
     graph_file = 'machine-2-1.camap.pkl'
     dataloader = DataLoader(train_file, test_file, label_file, normalize=True)
     dataloader.prepare_vae_data_set()
     train_data = dataloader.load_vae_train_set()
     test_data = dataloader.load_vae_test_set()
-    # print(train_data[0])
+    label_data=dataloader.load_ground_truth()
     print(train_data.shape)
     print(test_data.shape)
+    print(np.nonzero(label_data)[0])
+    plt.figure()
+    plt.close()

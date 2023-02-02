@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import numpy as np
 import torch
@@ -31,9 +32,10 @@ parser.add_argument('--vae_lr', default=0.001, type=float)
 parser.add_argument('-N', '--normalize_data', action='store_true')
 parser.add_argument('--model', default='vae', type=str)
 parser.add_argument('--kl_weight', default=1., type=float)
-parser.add_argument('--draw_length', default=100, type=int)
-parser.add_argument('--draw_dim', default=0, type=int)
-parser.add_argument('--draw_diff',action='store_true')
+parser.add_argument('--draw_length', default=None, type=int)
+parser.add_argument('--draw_dims', default=None, type=str)
+parser.add_argument('--draw_diff', action='store_true')
+parser.add_argument('-a', '--anomaly_percentage', default=0.04, type=float)
 args = parser.parse_args()
 
 num_train_samples = args.num_train_samples
@@ -56,8 +58,12 @@ normalize_data = args.normalize_data
 which_model = args.model
 kl_weight = args.kl_weight
 draw_length = args.draw_length
-draw_dim = args.draw_dim
-draw_diff=args.draw_diff
+draw_diff = args.draw_diff
+if args.draw_dims is not None:
+    draw_dims = args.draw_dims.strip().split('.')
+else:
+    draw_dims = None
+anomaly_percentage = args.anomaly_percentage
 
 train_file = 'machine-2-1.train.pkl'
 test_file = 'machine-2-1.test.pkl'
@@ -168,29 +174,73 @@ with tqdm(total=iters, ascii=True) as pbar:
             recon, mu, log_var = model(batch_x)
             recon_list = np.concatenate((recon_list, recon.cpu().detach().numpy()[:, -1]), axis=0)
         pbar.update()
+if iters * batch_size != test_set_size:
+    batch_x = test_set[iters * batch_size:]
+    if gpu:
+        batch_x = batch_x.cuda()
+    if which_model == 'vae':
+        recon, mu, log_std = model(batch_x)
+        recon_list = np.concatenate((recon_list, recon.cpu().detach().numpy()), axis=0)
+    elif which_model == 'ae':
+        recon = model(batch_x)
+        recon_list = np.concatenate((recon_list, recon.cpu().detach().numpy()), axis=0)
+    elif which_model == 'lstmvae':
+        recon, mu, log_var = model(batch_x)
+        recon_list = np.concatenate((recon_list, recon.cpu().detach().numpy()[:, -1]), axis=0)
 recon_list = recon_list[1:]
 
-print(recon_list.shape)
-length = draw_length
-if which_model == 'lstmvae':
-    y1 = test_set[:length, -1, draw_dim]
-else:
-    y1 = test_set[:length, draw_dim]
-y2 = recon_list[:length, draw_dim]
-x = np.arange(y1.shape[0])
-diff = np.abs(y1 - y2)
-if which_model == 'lstmvae':
-    # print(type((test_set[:length, -1] - recon_list[:length]) ** 2))
-    mse = torch.mean((test_set[:length, -1] - recon_list[:length]) ** 2, dim=1)
-else:
-    mse = torch.mean((test_set[:length] - recon_list[:length]) ** 2, dim=1)
+print(type(recon_list), type(test_set))
+
+mse_list = np.mean(np.square(recon_list - test_set.numpy()), axis=1)
+print(mse_list.shape, recon_list.shape)
+mse_sort_list = np.argsort(mse_list)[::-1]
+# mse_sort_list=np.argsort(mse_list)
+predicted_anomaly_position = mse_sort_list[:int(anomaly_percentage * test_set_size)]
+true_anomaly_position = dataloader.load_anomaly_position()
+
 plt.figure(dpi=300, figsize=(10, 5))
-ap = .9
-plt.plot(x, y1, label='ground truth', alpha=ap)
-plt.plot(x, y2, label='predicted', alpha=ap)
-if draw_diff:
-    plt.plot(x, diff, label='diff', alpha=ap)
-# plt.plot(x, mse, label='mse', alpha=ap)
+x = np.arange(mse_list.shape[0])
+y_predicted = np.arange(mse_list.shape[0],dtype=float)
+print(y_predicted.dtype)
+y_predicted[predicted_anomaly_position] += mse_list[predicted_anomaly_position]
+y_gt = np.arange(mse_list.shape[0],dtype=float)
+y_gt[true_anomaly_position] += mse_list[true_anomaly_position]
+plt.plot(x[:draw_length], mse_list[:draw_length])
+# y1 = np.zeros(mse_list.shape[0]) + np.max(mse_list[:draw_length]) / 3
+# y2 = np.zeros(mse_list.shape[0]) + 2 * np.max(mse_list[:draw_length]) / 3
+plt.scatter(x[:draw_length], y_gt[:draw_length], label='gt', marker='o')
+plt.scatter(x[:draw_length], y_predicted[:draw_length], label='predicted', marker='o')
 plt.legend()
-plt.savefig('plot.png', format='png')
-print("plt")
+plt.savefig('plt.png', format='png')
+plt.close()
+# print(type(recon_list-test_set.numpy()))
+
+# draw
+
+# print(recon_list.shape)
+length = draw_length
+if draw_dims is not None:
+    for dim_str in draw_dims:
+        dim = int(dim_str)
+        if which_model == 'lstmvae':
+            y1 = test_set[:length, -1, dim]
+        else:
+            y1 = test_set[:length, dim]
+        y2 = recon_list[:length, dim]
+        x = np.arange(y1.shape[0])
+        diff = np.abs(y1 - y2)
+        if which_model == 'lstmvae':
+            # print(type((test_set[:length, -1] - recon_list[:length]) ** 2))
+            mse = torch.mean((test_set[:length, -1] - recon_list[:length]) ** 2, dim=1)
+        else:
+            mse = torch.mean((test_set[:length] - recon_list[:length]) ** 2, dim=1)
+        plt.figure(dpi=300, figsize=(10, 5))
+        ap = .9
+        plt.plot(x, y1, label='ground truth', alpha=ap)
+        plt.plot(x, y2, label='predicted', alpha=ap)
+        if draw_diff:
+            plt.plot(x, diff, label='diff', alpha=ap)
+        # plt.plot(x, mse, label='mse', alpha=ap)
+        plt.legend()
+        plt.savefig(os.path.join('save', dim_str + '.png'), format='png')
+        print("plt")
