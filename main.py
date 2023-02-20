@@ -65,6 +65,8 @@ else:
     draw_dims = None
 anomaly_percentage = args.anomaly_percentage
 
+os.environ['CUDA_VISIBLE_DEVICES'] = gpu_device
+
 train_file = 'machine-2-1.train.pkl'
 test_file = 'machine-2-1.test.pkl'
 # train_file = 'sector1.pkl'
@@ -200,20 +202,59 @@ true_anomaly_position = dataloader.load_anomaly_position()
 
 plt.figure(dpi=300, figsize=(10, 5))
 x = np.arange(mse_list.shape[0])
-y_predicted = np.arange(mse_list.shape[0],dtype=float)
-print(y_predicted.dtype)
-y_predicted[predicted_anomaly_position] += mse_list[predicted_anomaly_position]
-y_gt = np.arange(mse_list.shape[0],dtype=float)
-y_gt[true_anomaly_position] += mse_list[true_anomaly_position]
+# y_predicted = np.zeros(mse_list.shape[0], dtype=float)
+# y_gt = np.zeros(mse_list.shape[0], dtype=float)
+if draw_length is None:
+    x_predicted = predicted_anomaly_position
+    x_gt = true_anomaly_position
+else:
+    x_predicted = predicted_anomaly_position[np.where(predicted_anomaly_position < draw_length)]
+    x_gt = true_anomaly_position[np.where(true_anomaly_position < draw_length)]
+y_predicted = mse_list[x_predicted]
+y_gt = mse_list[x_gt]
+
 plt.plot(x[:draw_length], mse_list[:draw_length])
 # y1 = np.zeros(mse_list.shape[0]) + np.max(mse_list[:draw_length]) / 3
 # y2 = np.zeros(mse_list.shape[0]) + 2 * np.max(mse_list[:draw_length]) / 3
-plt.scatter(x[:draw_length], y_gt[:draw_length], label='gt', marker='o')
-plt.scatter(x[:draw_length], y_predicted[:draw_length], label='predicted', marker='o')
+
+# plt.scatter(x_gt, y_gt, label='gt', color='red', alpha=0.5,s=5)
+for i in x_gt:
+    plt.axvline(i, color='red', alpha=0.5)
+plt.scatter(x_predicted, y_predicted, label='predicted', color='green', alpha=0.9, s=5)
 plt.legend()
 plt.savefig('plt.png', format='png')
 plt.close()
+
+
 # print(type(recon_list-test_set.numpy()))
+
+def cal_metrics(gt, predicted, total):
+    gt_oz = np.zeros(total, dtype=float)
+    gt_oz[gt] += 1.
+    pred_oz = np.zeros(total, dtype=float)
+    pred_oz[predicted] += 1.
+    tp = np.where((pred_oz == 1) & (gt_oz == 1), 1., 0.).sum()
+    fp = np.where((pred_oz == 1) & (gt_oz == 0), 1., 0.).sum()
+    tn = np.where((pred_oz == 0) & (gt_oz == 0), 1., 0.).sum()
+    fn = np.where((pred_oz == 0) & (gt_oz == 1), 1., 0.).sum()
+    # tplist = np.where((pred_oz == 1) & (gt_oz == 1), 1., 0.)
+    # fplist = np.where((pred_oz == 1) & (gt_oz == 0), 1., 0.)
+    # tnlist = np.where((pred_oz == 0) & (gt_oz == 0), 1., 0.)
+    # fnlist = np.where((pred_oz == 0) & (gt_oz == 1), 1., 0.)
+    # f = open('hel.txt', 'w')
+    # print('pre', 'gt', 'tp', 'fp', 'tn', 'fn', sep='\t', file=f)
+    # for i in range(tplist.shape[0]):
+    #     print(pred_oz[i], gt_oz[i], tplist[i], fplist[i], tnlist[i], fnlist[i], sep='\t', file=f)
+    # f.close()
+    print(tp, fp, tn, fn)
+    print(gt_oz.sum(), pred_oz.sum())
+    recall=tp/(tp+fn)
+    precision=tp/(tp+fp)
+    f1=2*precision*recall/(precision+recall)
+    print(recall,precision,f1)
+
+
+cal_metrics(true_anomaly_position, predicted_anomaly_position, mse_list.shape[0])
 
 # draw
 
